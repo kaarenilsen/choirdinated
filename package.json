@@ -19,11 +19,18 @@
     "db:migrate": "cd web-admin && npm run db:migrate",
     "db:studio": "cd web-admin && npm run db:studio"
   },
-  "keywords": ["choir", "management", "music", "react-native", "nextjs"],
+  "keywords": [
+    "choir",
+    "management",
+    "music",
+    "react-native",
+    "nextjs"
+  ],
   "author": "Birget",
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/pg": "^8.15.4",
     "typescript": "^5.3.0"
   }
 }
