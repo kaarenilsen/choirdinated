@@ -1,224 +1,230 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+'use client'
+
+import React, { useEffect, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { 
-  Users, 
-  Calendar, 
-  Music, 
-  TrendingUp,
-  UserCheck,
-  CalendarDays,
-  Clock,
-  ArrowRight
-} from 'lucide-react'
+import { CheckCircle2, Circle, Users, Settings, Calendar, Music, FileText, LucideIcon } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-export default async function DashboardPage() {
-  const supabase = createServerComponentClient({ cookies })
-  
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+interface TodoItem {
+  id: string
+  title: string
+  description: string
+  iconName: 'Users' | 'Music' | 'FileText' | 'Calendar' | 'Settings'
+  href: string
+  completed: boolean
+}
 
-  if (!session) {
-    return null
+export default function DashboardPage() {
+  const router = useRouter()
+  const [todos, setTodos] = useState<TodoItem[]>([])
+  const [showWelcome, setShowWelcome] = useState(false)
+
+  // Icon mapping to resolve icons by name
+  const iconMap: Record<string, LucideIcon> = {
+    Users,
+    Music,
+    FileText,
+    Calendar,
+    Settings
   }
 
-  // Get choir statistics
-  const { data: member } = await supabase
-    .from('members')
-    .select(`
-      id,
-      choirId,
-      choir:choirs(
-        id,
-        name,
-        foundedYear,
-        settings
-      )
-    `)
-    .eq('userProfileId', session.user.id)
-    .single()
+  useEffect(() => {
+    // Check if this is a new user (no todos in localStorage)
+    const savedTodos = localStorage.getItem('onboarding-todos')
+    if (!savedTodos) {
+      // First time user
+      const initialTodos: TodoItem[] = [
+        {
+          id: 'import-members',
+          title: 'Importer medlemmer',
+          description: 'Overfør medlemmer fra ditt tidligere system',
+          iconName: 'Users',
+          href: '/dashboard/settings/import',
+          completed: false
+        },
+        {
+          id: 'configure-voices',
+          title: 'Konfigurer stemmegrupper',
+          description: 'Sett opp stemmegrupper og stemmetyper for koret',
+          iconName: 'Music',
+          href: '/dashboard/settings/voices',
+          completed: false
+        },
+        {
+          id: 'membership-types',
+          title: 'Definer medlemskapstyper',
+          description: 'Sett opp medlemskapstyper (fast medlem, prosjektsanger, etc.)',
+          iconName: 'FileText',
+          href: '/dashboard/settings/membership-types',
+          completed: false
+        },
+        {
+          id: 'create-event',
+          title: 'Opprett første øvelse',
+          description: 'Legg inn en øvelse eller konsert i kalenderen',
+          iconName: 'Calendar',
+          href: '/dashboard/events/new',
+          completed: false
+        },
+        {
+          id: 'configure-system',
+          title: 'Tilpass systemet',
+          description: 'Konfigurer roller, hendelsestyper og andre innstillinger',
+          iconName: 'Settings',
+          href: '/dashboard/settings',
+          completed: false
+        }
+      ]
+      localStorage.setItem('onboarding-todos', JSON.stringify(initialTodos))
+      setTodos(initialTodos)
+      setShowWelcome(true)
+    } else {
+      try {
+        const savedTodosList = JSON.parse(savedTodos)
+        // Check if the saved data has the old format (with 'icon' property)
+        if (savedTodosList.length > 0 && 'icon' in savedTodosList[0]) {
+          // Clear old format data
+          localStorage.removeItem('onboarding-todos')
+          window.location.reload()
+          return
+        }
+        setTodos(savedTodosList)
+        // Show welcome if not all todos are completed
+        const allCompleted = savedTodosList.every((todo: TodoItem) => todo.completed)
+        setShowWelcome(!allCompleted)
+      } catch (error) {
+        // If there's an error parsing, clear and reload
+        console.error('Error parsing saved todos:', error)
+        localStorage.removeItem('onboarding-todos')
+        window.location.reload()
+      }
+    }
+  }, [])
 
-  const choirId = member?.choirId
+  const toggleTodo = (id: string) => {
+    const updatedTodos = todos.map(todo =>
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    )
+    setTodos(updatedTodos)
+    localStorage.setItem('onboarding-todos', JSON.stringify(updatedTodos))
+    
+    // Check if all todos are completed
+    const allCompleted = updatedTodos.every(todo => todo.completed)
+    if (allCompleted) {
+      setShowWelcome(false)
+    }
+  }
 
-  // Get member count
-  const { count: memberCount } = await supabase
-    .from('members')
-    .select('*', { count: 'exact', head: true })
-    .eq('choirId', choirId)
+  const completedCount = todos.filter(todo => todo.completed).length
+  const progress = todos.length > 0 ? (completedCount / todos.length) * 100 : 0
 
-  // Get upcoming events count
-  const { count: upcomingEventsCount } = await supabase
-    .from('events')
-    .select('*', { count: 'exact', head: true })
-    .eq('choirId', choirId)
-    .gte('startTime', new Date().toISOString())
-
-  // Get recent events
-  const { data: recentEvents } = await supabase
-    .from('events')
-    .select(`
-      id,
-      title,
-      startTime,
-      eventType:listOfValues!events_typeId_fkey(
-        displayName
-      )
-    `)
-    .eq('choirId', choirId)
-    .gte('startTime', new Date().toISOString())
-    .order('startTime', { ascending: true })
-    .limit(5)
-
-  const stats = [
-    {
-      title: 'Medlemmer',
-      value: memberCount || 0,
-      icon: Users,
-      href: '/dashboard/members',
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-    },
-    {
-      title: 'Kommende arrangementer',
-      value: upcomingEventsCount || 0,
-      icon: Calendar,
-      href: '/dashboard/events',
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-    },
-    {
-      title: 'Aktive sanger',
-      value: 0, // TODO: Implement repertoire count
-      icon: Music,
-      href: '/dashboard/repertoire',
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-    },
-    {
-      title: 'Oppmøte siste måned',
-      value: '0%', // TODO: Implement attendance tracking
-      icon: TrendingUp,
-      href: '/dashboard/attendance',
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-    },
-  ]
+  if (!showWelcome) {
+    // Regular dashboard content
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold">Oversikt</h1>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Aktive medlemmer</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">
+                Importer medlemmer for å komme i gang
+              </p>
+            </CardContent>
+          </Card>
+          {/* Add more dashboard cards here */}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Velkommen til {(member?.choir as any)?.[0]?.name}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Her er en oversikt over korets aktiviteter
-        </p>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon
-          return (
-            <Link key={stat.title} href={stat.href}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    {stat.title}
-                  </CardTitle>
-                  <div className={`${stat.bgColor} p-2 rounded-lg`}>
-                    <Icon className={`h-4 w-4 ${stat.color}`} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                </CardContent>
-              </Card>
-            </Link>
-          )
-        })}
-      </div>
-
-      {/* Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Upcoming Events */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Kommende arrangementer</CardTitle>
-              <Link href="/dashboard/events">
-                <Button variant="ghost" size="sm">
-                  Se alle
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
+      <Card className="border-primary">
+        <CardHeader>
+          <CardTitle className="text-2xl">Velkommen til Choirdinated! 🎵</CardTitle>
+          <CardDescription className="text-base">
+            La oss hjelpe deg med å komme i gang. Her er noen viktige oppgaver for å sette opp koret ditt.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6">
+            <div className="flex justify-between text-sm mb-2">
+              <span>Fremgang</span>
+              <span>{completedCount} av {todos.length} fullført</span>
             </div>
-          </CardHeader>
-          <CardContent>
-            {recentEvents && recentEvents.length > 0 ? (
-              <div className="space-y-4">
-                {recentEvents.map((event) => (
-                  <div key={event.id} className="flex items-center space-x-4">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <CalendarDays className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
-                        {event.title}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {(event.eventType as any)?.[0]?.displayName} • {new Date(event.startTime).toLocaleDateString('nb-NO')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">
-                Ingen kommende arrangementer
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Hurtighandlinger</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Link href="/dashboard/events/new">
-                <Button variant="outline" className="w-full justify-start">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Opprett nytt arrangement
-                </Button>
-              </Link>
-              <Link href="/dashboard/members/new">
-                <Button variant="outline" className="w-full justify-start">
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  Legg til nytt medlem
-                </Button>
-              </Link>
-              <Link href="/dashboard/repertoire/new">
-                <Button variant="outline" className="w-full justify-start">
-                  <Music className="h-4 w-4 mr-2" />
-                  Legg til ny sang
-                </Button>
-              </Link>
-              <Link href="/dashboard/attendance">
-                <Button variant="outline" className="w-full justify-start">
-                  <Clock className="h-4 w-4 mr-2" />
-                  Registrer oppmøte
-                </Button>
-              </Link>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-primary h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <div className="space-y-3">
+            {todos.map((todo) => {
+              const Icon = iconMap[todo.iconName] || Users // Fallback to Users icon if undefined
+              if (!Icon) {
+                console.error(`Icon not found for: ${todo.iconName}`)
+                return null
+              }
+              return (
+                <div 
+                  key={todo.id}
+                  className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
+                    todo.completed ? 'bg-muted/50' : 'hover:bg-muted/30'
+                  }`}
+                >
+                  <button
+                    onClick={() => toggleTodo(todo.id)}
+                    className="flex-shrink-0"
+                  >
+                    {todo.completed ? (
+                      <CheckCircle2 className="h-6 w-6 text-primary" />
+                    ) : (
+                      <Circle className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </button>
+                  
+                  <Icon className={`h-5 w-5 ${todo.completed ? 'text-muted-foreground' : 'text-primary'}`} />
+                  
+                  <div className="flex-1">
+                    <h3 className={`font-medium ${todo.completed ? 'line-through text-muted-foreground' : ''}`}>
+                      {todo.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {todo.description}
+                    </p>
+                  </div>
+
+                  {!todo.completed && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(todo.href)}
+                    >
+                      Start
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-6 p-4 bg-primary/10 rounded-lg">
+            <p className="text-sm">
+              <strong>Tips:</strong> Vi anbefaler å starte med å importere medlemmer fra ditt gamle system. 
+              Dette vil spare deg for mye tid og gi deg en god oversikt over koret med en gang.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

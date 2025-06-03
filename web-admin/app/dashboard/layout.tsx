@@ -1,134 +1,122 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+'use client'
+
+import { ReactNode } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { 
+  Home, 
   Users, 
   Calendar, 
   Music, 
   Settings, 
-  Home,
+  FileText,
   LogOut,
-  Menu
+  Menu,
+  X
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useState } from 'react'
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const supabase = createServerComponentClient({ cookies })
-  
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+const navigation = [
+  { name: 'Oversikt', href: '/dashboard', icon: Home },
+  { name: 'Medlemmer', href: '/dashboard/members', icon: Users },
+  { name: 'Øvelser & Konserter', href: '/dashboard/events', icon: Calendar },
+  { name: 'Noter', href: '/dashboard/music', icon: Music },
+  { name: 'Rapporter', href: '/dashboard/reports', icon: FileText },
+  { name: 'Innstillinger', href: '/dashboard/settings', icon: Settings },
+]
 
-  if (!session) {
-    redirect('/auth/signin')
-  }
-
-  // Get user's choir membership
-  const { data: member } = await supabase
-    .from('members')
-    .select(`
-      id,
-      choir:choirs(
-        id,
-        name,
-        logoUrl
-      ),
-      membershipType:membership_types(
-        name,
-        displayName
-      )
-    `)
-    .eq('userProfileId', session.user.id)
-    .single()
-
-  const navItems = [
-    { href: '/dashboard', label: 'Oversikt', icon: Home },
-    { href: '/dashboard/members', label: 'Medlemmer', icon: Users },
-    { href: '/dashboard/events', label: 'Arrangementer', icon: Calendar },
-    { href: '/dashboard/repertoire', label: 'Repertoar', icon: Music },
-    { href: '/dashboard/settings', label: 'Innstillinger', icon: Settings },
-  ]
-
-  const handleSignOut = async () => {
-    'use server'
-    const supabase = createServerComponentClient({ cookies })
-    await supabase.auth.signOut()
-    redirect('/auth/signin')
-  }
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <button className="lg:hidden p-2 rounded-md hover:bg-gray-100">
-                <Menu className="h-5 w-5" />
-              </button>
-              <div className="flex items-center ml-4 lg:ml-0">
-                <Music className="h-8 w-8 text-blue-600 mr-3" />
-                <div>
-                  <h1 className="text-xl font-semibold text-gray-900">
-                    {(member?.choir as any)?.[0]?.name || 'Choirdinated'}
-                  </h1>
-                  <p className="text-sm text-gray-500">
-                    {(member?.membershipType as any)?.[0]?.displayName}
-                  </p>
-                </div>
+      {/* Mobile menu button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </Button>
+      </div>
+
+      {/* Sidebar */}
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-40 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out",
+        mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
+        <div className="flex flex-col h-full">
+          <div className="p-6">
+            <div className="flex items-center space-x-2">
+              <Music className="h-8 w-8 text-blue-600" />
+              <span className="text-xl font-bold">Choirdinated</span>
+            </div>
+          </div>
+
+          <nav className="flex-1 px-4 pb-4">
+            <ul className="space-y-1">
+              {navigation.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || 
+                  (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                
+                return (
+                  <li key={item.name}>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      )}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {item.name}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </nav>
+
+          <div className="p-4 border-t">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 font-semibold">KF</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Kor Admin</p>
+                <p className="text-xs text-gray-500">admin@example.com</p>
               </div>
             </div>
-            
-            <form action={handleSignOut}>
-              <Button variant="ghost" size="sm" type="submit">
-                <LogOut className="h-4 w-4 mr-2" />
-                Logg ut
-              </Button>
-            </form>
+            <Button variant="ghost" className="w-full justify-start" size="sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logg ut
+            </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="flex">
-        {/* Sidebar Navigation */}
-        <nav className="hidden lg:flex lg:flex-shrink-0">
-          <div className="flex flex-col w-64">
-            <div className="flex flex-col flex-grow bg-white border-r pt-5 pb-4">
-              <div className="flex-grow flex flex-col">
-                <nav className="flex-1 px-2 space-y-1">
-                  {navItems.map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                      >
-                        <Icon className="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500" />
-                        {item.label}
-                      </Link>
-                    )
-                  })}
-                </nav>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* Main Content */}
-        <main className="flex-1">
-          <div className="py-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              {children}
-            </div>
-          </div>
+      {/* Main content */}
+      <div className="lg:pl-64">
+        <main className="p-6 lg:p-8">
+          {children}
         </main>
       </div>
+
+      {/* Mobile menu overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
     </div>
   )
 }
