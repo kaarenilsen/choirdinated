@@ -5,6 +5,14 @@
 **Domain**: English | **UI**: Norwegian  
 **Supabase Project**: `uabjpfgamdkctrvfwnuq`
 
+## Critical Security Requirements
+
+**DATA ISOLATION**: It is absolutely critical that users NEVER see any data belonging to choirs they do not belong to. All queries, views, and API endpoints MUST enforce strict choir-level data isolation. This is a fundamental security requirement that must be enforced at every level:
+- Database queries must ALWAYS filter by choir_id
+- API endpoints must validate choir membership before returning ANY data
+- Row Level Security (RLS) policies must enforce choir boundaries
+- No cross-choir data leakage under any circumstances
+
 ## Architecture Overview
 
 ### Applications

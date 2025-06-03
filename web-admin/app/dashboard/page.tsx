@@ -111,7 +111,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Velkommen til {member?.choir?.name}
+          Velkommen til {(member?.choir as any)?.[0]?.name}
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           Her er en oversikt over korets aktiviteter
@@ -170,7 +170,7 @@ export default async function DashboardPage() {
                         {event.title}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {event.eventType?.displayName} • {new Date(event.startTime).toLocaleDateString('nb-NO')}
+                        {(event.eventType as any)?.[0]?.displayName} • {new Date(event.startTime).toLocaleDateString('nb-NO')}
                       </p>
                     </div>
                   </div>

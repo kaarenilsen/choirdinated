@@ -75,10 +75,10 @@ export default async function DashboardLayout({
                 <Music className="h-8 w-8 text-blue-600 mr-3" />
                 <div>
                   <h1 className="text-xl font-semibold text-gray-900">
-                    {member?.choir?.name || 'Choirdinated'}
+                    {(member?.choir as any)?.[0]?.name || 'Choirdinated'}
                   </h1>
                   <p className="text-sm text-gray-500">
-                    {member?.membershipType?.displayName}
+                    {(member?.membershipType as any)?.[0]?.displayName}
                   </p>
                 </div>
               </div>
