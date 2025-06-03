@@ -97,3 +97,4 @@ drizzle/
 
 # Supabase
 .supabase/
+.vercel
