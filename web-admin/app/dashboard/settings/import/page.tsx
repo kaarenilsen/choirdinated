@@ -78,8 +78,8 @@ export default function ImportMembersPage() {
         email: 'E-post',
         phone: 'Mobil',
         birthDate: 'Fødselsdato',
-        voiceGroup: 'Gruppe',
-        voiceType: 'Sekundærgruppe',
+        voiceGroup: 'Avdeling', // Changed from 'Gruppe' to 'Avdeling' for Styreportalen
+        voiceType: 'Gruppe', // Changed from 'Sekundærgruppe' to 'Gruppe' for Styreportalen
         membershipType: 'Medlemskapstype',
         status: 'Status',
         registrationDate: 'Registreringsdato',
@@ -127,9 +127,9 @@ export default function ImportMembersPage() {
     setIsProcessing(true)
     
     // Analyze unique values that might need to be created
-    const voiceGroups = new Set(fileData.map(row => row[fieldMappings.voiceGroup]).filter(Boolean))
-    const voiceTypes = new Set(fileData.map(row => row[fieldMappings.voiceType]).filter(Boolean))
-    const membershipTypes = new Set(fileData.map(row => row[fieldMappings.membershipType]).filter(Boolean))
+    const voiceGroups = new Set(fileData.map(row => row[fieldMappings.voiceGroup!]).filter(Boolean))
+    const voiceTypes = new Set(fileData.map(row => row[fieldMappings.voiceType!]).filter(Boolean))
+    const membershipTypes = new Set(fileData.map(row => row[fieldMappings.membershipType!]).filter(Boolean))
 
     // Analyze the data and prepare summary
     const summary = {
@@ -142,14 +142,35 @@ export default function ImportMembersPage() {
       configChanges: [] as any[],
       mappedData: fileData.map(row => {
         const mapped: any = {}
+        const unmappedFields: any = {}
+        
+        // First, map the known fields
         Object.entries(fieldMappings).forEach(([targetField, sourceField]) => {
           let value = row[sourceField]
           // Apply value mappings if they exist
           if (valueMappings[targetField] && valueMappings[targetField][value]) {
-            value = valueMappings[targetField][value]
+            const mappedValue = valueMappings[targetField][value]
+            // Only apply the mapping if it's not "same" (which means use original value)
+            if (mappedValue !== 'same') {
+              value = mappedValue
+            }
           }
           mapped[targetField] = value
         })
+        
+        // Then, collect all unmapped fields
+        const mappedSourceFields = new Set(Object.values(fieldMappings))
+        Object.entries(row).forEach(([sourceField, value]) => {
+          if (!mappedSourceFields.has(sourceField)) {
+            unmappedFields[sourceField] = value
+          }
+        })
+        
+        // Include unmapped fields in a special property
+        if (Object.keys(unmappedFields).length > 0) {
+          mapped._unmappedFields = unmappedFields
+        }
+        
         return mapped
       })
     }
@@ -278,7 +299,9 @@ export default function ImportMembersPage() {
                         {sourceSystem === 'styreportalen' && (
                           <>
                             <li>• CSV-fil eksportert fra Styreportalen</li>
-                            <li>• Må inneholde: Fornavn, Etternavn, E-post, Gruppe</li>
+                            <li>• Må inneholde: Fornavn, Etternavn, E-post, Avdeling</li>
+                            <li>• Avdeling blir stemmegruppe, Gruppe blir stemmetype</li>
+                            <li>• Alle ukjente felt blir lagret for fremtidig bruk</li>
                           </>
                         )}
                         {sourceSystem === 'choirmate' && (

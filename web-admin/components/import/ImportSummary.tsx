@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Users, UserPlus, Settings, AlertCircle, CheckCircle2, Music, FileText, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface ImportSummaryProps {
   summary: {
@@ -147,6 +146,33 @@ export function ImportSummary({ summary, onConfirm, onCancel, isProcessing }: Im
                 </Badge>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Show unmapped fields if any */}
+      {summary.mappedData.length > 0 && summary.mappedData[0]._unmappedFields && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Ekstra felt som blir lagret
+            </CardTitle>
+            <CardDescription>
+              Følgende felt fra kildesystemet har ingen direkte mapping, men blir lagret for fremtidig bruk
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(summary.mappedData[0]._unmappedFields).map(field => (
+                <Badge key={field} variant="secondary">
+                  {field}
+                </Badge>
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              Disse feltene kan konfigureres som ekstra datapunkter på medlemmer senere.
+            </p>
           </CardContent>
         </Card>
       )}

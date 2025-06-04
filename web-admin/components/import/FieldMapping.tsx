@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ArrowRight, AlertCircle, Sparkles, Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface FieldMappingProps {
   sourceData: any[]
@@ -83,15 +82,39 @@ export function FieldMapping({ sourceData, fieldMappings, valueMappings, onUpdat
     // Auto-detect voice groups
     if (field === 'voiceGroup') {
       uniqueValues.forEach(value => {
-        const lower = value.toLowerCase()
-        if (lower.includes('sopran') || lower === '1. sopran' || lower === '2. sopran') {
-          newValueMap[field][value] = 'Sopran'
-        } else if (lower.includes('alt') || lower === '1. alt' || lower === '2. alt') {
-          newValueMap[field][value] = 'Alt'
-        } else if (lower.includes('tenor') || lower === '1. tenor' || lower === '2. tenor') {
-          newValueMap[field][value] = 'Tenor'
-        } else if (lower.includes('bass') || lower === '1. bass' || lower === '2. bass') {
-          newValueMap[field][value] = 'Bass'
+        const lower = value.toLowerCase().trim()
+        if (lower.includes('sopran') || lower.includes('soprano') || lower === 's' || lower === 'sopran') {
+          newValueMap[field]![value] = 'Sopran'
+        } else if (lower.includes('alt') || lower.includes('alto') || lower === 'a' || lower === 'alt') {
+          newValueMap[field]![value] = 'Alt'
+        } else if (lower.includes('tenor') || lower === 't' || lower === 'tenor') {
+          newValueMap[field]![value] = 'Tenor'
+        } else if (lower.includes('bass') || lower.includes('baritone') || lower === 'b' || lower === 'bass') {
+          newValueMap[field]![value] = 'Bass'
+        }
+      })
+    }
+
+    // Auto-detect voice types
+    if (field === 'voiceType') {
+      uniqueValues.forEach(value => {
+        const lower = value.toLowerCase().trim()
+        if (lower.includes('1') && (lower.includes('sopran') || lower.includes('soprano'))) {
+          newValueMap[field]![value] = '1. Sopran'
+        } else if (lower.includes('2') && (lower.includes('sopran') || lower.includes('soprano'))) {
+          newValueMap[field]![value] = '2. Sopran'
+        } else if (lower.includes('1') && lower.includes('alt')) {
+          newValueMap[field]![value] = '1. Alt'
+        } else if (lower.includes('2') && lower.includes('alt')) {
+          newValueMap[field]![value] = '2. Alt'
+        } else if (lower.includes('1') && lower.includes('tenor')) {
+          newValueMap[field]![value] = '1. Tenor'
+        } else if (lower.includes('2') && lower.includes('tenor')) {
+          newValueMap[field]![value] = '2. Tenor'
+        } else if (lower.includes('1') && lower.includes('bass')) {
+          newValueMap[field]![value] = '1. Bass'
+        } else if (lower.includes('2') && lower.includes('bass')) {
+          newValueMap[field]![value] = '2. Bass'
         }
       })
     }
@@ -99,13 +122,13 @@ export function FieldMapping({ sourceData, fieldMappings, valueMappings, onUpdat
     // Auto-detect membership types
     if (field === 'membershipType') {
       uniqueValues.forEach(value => {
-        const lower = value.toLowerCase()
+        const lower = value.toLowerCase().trim()
         if (lower.includes('fast') || lower === 'fast medlem') {
-          newValueMap[field][value] = 'Fast medlem'
+          newValueMap[field]![value] = 'Fast medlem'
         } else if (lower.includes('prosjekt')) {
-          newValueMap[field][value] = 'Prosjektsanger'
+          newValueMap[field]![value] = 'Prosjektsanger'
         } else if (lower.includes('permisjon')) {
-          newValueMap[field][value] = 'Permisjon'
+          newValueMap[field]![value] = 'Permisjon'
         }
       })
     }
@@ -114,15 +137,6 @@ export function FieldMapping({ sourceData, fieldMappings, valueMappings, onUpdat
     onUpdate(mappings, newValueMap)
   }
 
-  const getSampleValues = (field: string): string[] => {
-    const values: string[] = []
-    for (let i = 0; i < Math.min(3, sourceData.length); i++) {
-      if (sourceData[i][field]) {
-        values.push(sourceData[i][field])
-      }
-    }
-    return values
-  }
 
   const requiredFieldsMapped = targetFields
     .filter(f => f.required)
@@ -234,7 +248,8 @@ export function FieldMapping({ sourceData, fieldMappings, valueMappings, onUpdat
                 </TableHeader>
                 <TableBody>
                   {getUniqueValues(mappings[showValueMapping]).map(value => {
-                    const count = sourceData.filter(row => row[mappings[showValueMapping]] === value).length
+                    const mappingKey = mappings[showValueMapping]
+                    const count = mappingKey ? sourceData.filter(row => row[mappingKey] === value).length : 0
                     return (
                       <TableRow key={value}>
                         <TableCell>
@@ -314,9 +329,10 @@ export function FieldMapping({ sourceData, fieldMappings, valueMappings, onUpdat
                 {sourceData.slice(0, 5).map((row, index) => (
                   <TableRow key={index}>
                     {targetFields.filter(f => mappings[f.key]).map(field => {
-                      let value = row[mappings[field.key]]
+                      const mappingKey = mappings[field.key]
+                      let value = mappingKey ? row[mappingKey] : ''
                       if (valueMap[field.key]?.[value]) {
-                        value = valueMap[field.key][value]
+                        value = valueMap[field.key]![value]!
                       }
                       return (
                         <TableCell key={field.key}>
