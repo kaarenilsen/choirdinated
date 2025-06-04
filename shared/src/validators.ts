@@ -45,7 +45,7 @@ export const memberSchema = z.object({
   updatedAt: z.date()
 })
 
-export const eventSchema = z.object({
+const baseEventSchema = z.object({
   id: z.string().uuid(),
   choirId: z.string().uuid().optional(),
   title: z.string().min(1),
@@ -75,12 +75,14 @@ export const eventSchema = z.object({
   excludeHolidays: z.boolean().default(true),
   calendarSyncEnabled: z.boolean().default(true),
   createdAt: z.date()
-}).refine((data) => data.endTime > data.startTime, {
+})
+
+export const eventSchema = baseEventSchema.refine((data) => data.endTime > data.startTime, {
   message: 'End time must be after start time',
   path: ['endTime']
 })
 
-export const membershipLeaveSchema = z.object({
+const baseMembershipLeaveSchema = z.object({
   id: z.string().uuid(),
   memberId: z.string().uuid(),
   leaveType: z.enum(['maternity', 'work_travel', 'illness', 'personal', 'other']),
@@ -93,7 +95,9 @@ export const membershipLeaveSchema = z.object({
   approvedBy: z.string().uuid().optional(),
   approvedAt: z.date().optional(),
   notes: z.string().optional()
-}).refine((data) => {
+})
+
+export const membershipLeaveSchema = baseMembershipLeaveSchema.refine((data) => {
   if (data.expectedReturnDate && data.expectedReturnDate <= data.startDate) {
     return false
   }
@@ -152,7 +156,10 @@ export const createMemberSchema = z.object({
   notes: z.string().optional()
 })
 
-export const createEventSchema = eventSchema.omit({ id: true, createdAt: true })
+export const createEventSchema = baseEventSchema.omit({ id: true, createdAt: true }).refine((data) => data.endTime > data.startTime, {
+  message: 'End time must be after start time',
+  path: ['endTime']
+})
 
 export const updateEventSchema = createEventSchema.partial()
 
@@ -166,12 +173,22 @@ export const markAttendanceSchema = z.object({
   notes: z.string().optional()
 })
 
-export const createLeaveRequestSchema = membershipLeaveSchema.omit({ 
+export const createLeaveRequestSchema = baseMembershipLeaveSchema.omit({ 
   id: true, 
   requestedAt: true, 
   approvedBy: true, 
   approvedAt: true, 
   status: true 
+}).refine((data) => {
+  if (data.expectedReturnDate && data.expectedReturnDate <= data.startDate) {
+    return false
+  }
+  if (data.actualReturnDate && data.actualReturnDate < data.startDate) {
+    return false
+  }
+  return true
+}, {
+  message: 'Return dates must be after start date'
 })
 
 export const approveLeaveSchema = z.object({
