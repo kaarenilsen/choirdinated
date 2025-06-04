@@ -31,27 +31,30 @@ const getDefaultEventStatuses = () => [
 ]
 
 const getDefaultVoiceConfiguration = (configurationType: 'SATB' | 'SSAATTBB' | 'SMATBB') => {
+  const voiceGroups = []
   const voiceTypes = []
   
   switch (configurationType) {
     case 'SATB':
-      voiceTypes.push(
-        { category: 'voice_type', value: 'soprano', displayName: 'Sopran', sortOrder: 1 },
-        { category: 'voice_type', value: 'alto', displayName: 'Alt', sortOrder: 2 },
-        { category: 'voice_type', value: 'tenor', displayName: 'Tenor', sortOrder: 3 },
-        { category: 'voice_type', value: 'bass', displayName: 'Bass', sortOrder: 4 }
-      )
-      break
-
-    case 'SSAATTBB':
-      const voiceGroups = [
+      // For SATB, we only need voice groups (no subdivisions)
+      voiceGroups.push(
         { category: 'voice_group', value: 'soprano', displayName: 'Sopran', sortOrder: 1 },
         { category: 'voice_group', value: 'alto', displayName: 'Alt', sortOrder: 2 },
         { category: 'voice_group', value: 'tenor', displayName: 'Tenor', sortOrder: 3 },
         { category: 'voice_group', value: 'bass', displayName: 'Bass', sortOrder: 4 }
-      ]
+      )
+      break
+
+    case 'SSAATTBB':
+      // Voice groups (parent level)
+      voiceGroups.push(
+        { category: 'voice_group', value: 'soprano', displayName: 'Sopran', sortOrder: 1 },
+        { category: 'voice_group', value: 'alto', displayName: 'Alt', sortOrder: 2 },
+        { category: 'voice_group', value: 'tenor', displayName: 'Tenor', sortOrder: 3 },
+        { category: 'voice_group', value: 'bass', displayName: 'Bass', sortOrder: 4 }
+      )
       
-      voiceTypes.push(...voiceGroups)
+      // Voice types (subdivisions) - will be linked to parent groups after insertion
       voiceTypes.push(
         { category: 'voice_type', value: 'soprano_1', displayName: '1. Sopran', sortOrder: 1, parentValue: 'soprano' },
         { category: 'voice_type', value: 'soprano_2', displayName: '2. Sopran', sortOrder: 2, parentValue: 'soprano' },
@@ -65,18 +68,19 @@ const getDefaultVoiceConfiguration = (configurationType: 'SATB' | 'SSAATTBB' | '
       break
 
     case 'SMATBB':
-      voiceTypes.push(
-        { category: 'voice_type', value: 'soprano', displayName: 'Sopran', sortOrder: 1 },
-        { category: 'voice_type', value: 'mezzo', displayName: 'Mezzosopran', sortOrder: 2 },
-        { category: 'voice_type', value: 'alto', displayName: 'Alt', sortOrder: 3 },
-        { category: 'voice_type', value: 'tenor', displayName: 'Tenor', sortOrder: 4 },
-        { category: 'voice_type', value: 'baritone', displayName: 'Baryton', sortOrder: 5 },
-        { category: 'voice_type', value: 'bass', displayName: 'Bass', sortOrder: 6 }
+      // For operatic, we use individual voice groups (no subdivisions typically needed)
+      voiceGroups.push(
+        { category: 'voice_group', value: 'soprano', displayName: 'Sopran', sortOrder: 1 },
+        { category: 'voice_group', value: 'mezzo', displayName: 'Mezzosopran', sortOrder: 2 },
+        { category: 'voice_group', value: 'alto', displayName: 'Alt', sortOrder: 3 },
+        { category: 'voice_group', value: 'tenor', displayName: 'Tenor', sortOrder: 4 },
+        { category: 'voice_group', value: 'baritone', displayName: 'Baryton', sortOrder: 5 },
+        { category: 'voice_group', value: 'bass', displayName: 'Bass', sortOrder: 6 }
       )
       break
   }
   
-  return voiceTypes
+  return { voiceGroups, voiceTypes }
 }
 
 import { z } from 'zod'
@@ -122,13 +126,13 @@ export async function POST(request: Request) {
     // Start transaction for choir provisioning
     const result = await db.transaction(async (tx) => {
       // 1. Create the choir
-      const [choir] = await tx.insert(choirs).values({
+      const choirResult = await tx.insert(choirs).values({
         name: validatedData.name,
-        description: validatedData.description,
+        description: validatedData.description ?? null,
         organizationType: validatedData.organizationType,
-        foundedYear: validatedData.foundedYear,
-        website: undefined, // Can be added later
-        logoUrl: undefined, // Can be uploaded later
+        foundedYear: validatedData.foundedYear ?? null,
+        website: null, // Can be added later
+        logoUrl: null, // Can be uploaded later
         settings: {
           allowMemberMessaging: true,
           requireAttendanceTracking: true,
@@ -149,6 +153,11 @@ export async function POST(request: Request) {
           }
         }
       }).returning()
+      
+      const choir = choirResult[0]
+      if (!choir) {
+        throw new Error('Failed to create choir')
+      }
 
       // 2. Create default membership types
       const defaultMembershipTypes = getDefaultMembershipTypes()
@@ -161,7 +170,7 @@ export async function POST(request: Request) {
           canAccessSystem: mt.canAccessSystem,
           canVote: mt.canVote,
           sortOrder: mt.sortOrder,
-          description: undefined
+          description: null
         }))
       ).returning()
 
@@ -172,53 +181,83 @@ export async function POST(request: Request) {
       }
 
       // 3. Create default list of values (event types, statuses, voice configuration)
-      const defaultValues = [
-        ...getDefaultEventTypes().map(et => ({
-          choirId: choir.id,
-          category: et.category as 'event_type',
-          value: et.value,
-          displayName: et.displayName,
-          isActive: true,
-          sortOrder: et.sortOrder,
-          parentId: undefined,
-          metadata: {}
-        })),
-        ...getDefaultEventStatuses().map(es => ({
-          choirId: choir.id,
-          category: es.category as 'event_status',
-          value: es.value,
-          displayName: es.displayName,
-          isActive: true,
-          sortOrder: es.sortOrder,
-          parentId: undefined,
-          metadata: {}
-        })),
-        ...getDefaultVoiceConfiguration(validatedData.voiceConfiguration).map(vc => ({
-          choirId: choir.id,
-          category: vc.category as 'voice_type' | 'voice_group',
-          value: vc.value,
-          displayName: vc.displayName,
-          isActive: true,
-          sortOrder: vc.sortOrder,
-          parentId: undefined, // Will be updated for hierarchical voice types
-          metadata: {}
-        }))
-      ]
+      const eventTypeValues = getDefaultEventTypes().map(et => ({
+        choirId: choir.id,
+        category: et.category as 'event_type',
+        value: et.value,
+        displayName: et.displayName,
+        isActive: true,
+        sortOrder: et.sortOrder,
+        parentId: null,
+        metadata: {}
+      }))
 
-      const insertedValues = await tx.insert(listOfValues).values(defaultValues).returning()
+      const eventStatusValues = getDefaultEventStatuses().map(es => ({
+        choirId: choir.id,
+        category: es.category as 'event_status',
+        value: es.value,
+        displayName: es.displayName,
+        isActive: true,
+        sortOrder: es.sortOrder,
+        parentId: null,
+        metadata: {}
+      }))
 
-      // Get voice group for the admin user (default to first soprano/voice group)
-      const voiceGroup = insertedValues.find(v => 
-        v.category === 'voice_group' || 
-        (v.category === 'voice_type' && ['soprano', 'sopran'].includes(v.value.toLowerCase()))
-      )
+      // Insert event types and statuses first
+      await tx.insert(listOfValues).values([
+        ...eventTypeValues,
+        ...eventStatusValues
+      ])
 
-      if (!voiceGroup) {
+      // Get voice configuration
+      const { voiceGroups, voiceTypes } = getDefaultVoiceConfiguration(validatedData.voiceConfiguration)
+
+      // Insert voice groups first (they are the parent level)
+      const voiceGroupValues = voiceGroups.map(vg => ({
+        choirId: choir.id,
+        category: vg.category as 'voice_group',
+        value: vg.value,
+        displayName: vg.displayName,
+        isActive: true,
+        sortOrder: vg.sortOrder,
+        parentId: null,
+        metadata: {}
+      }))
+
+      const insertedVoiceGroups = await tx.insert(listOfValues).values(voiceGroupValues).returning()
+
+      // Insert voice types (subdivisions) with proper parent relationships
+      if (voiceTypes.length > 0) {
+        const voiceTypeValues = voiceTypes.map(vt => {
+          // Find the parent voice group
+          const parentGroup = insertedVoiceGroups.find(vg => vg.value === vt.parentValue)
+          return {
+            choirId: choir.id,
+            category: vt.category as 'voice_type',
+            value: vt.value,
+            displayName: vt.displayName,
+            isActive: true,
+            sortOrder: vt.sortOrder,
+            parentId: parentGroup?.id || null,
+            metadata: {}
+          }
+        })
+
+        await tx.insert(listOfValues).values(voiceTypeValues)
+      }
+
+      // Note: All list of values have been created with proper hierarchical relationships
+
+      // Get voice group for the admin user (default to first voice group, preferably soprano)
+      const defaultVoiceGroup = insertedVoiceGroups.find(v => 
+        v.category === 'voice_group' && ['soprano', 'sopran'].includes(v.value.toLowerCase())
+      ) || insertedVoiceGroups[0] // Fall back to first voice group if no soprano found
+
+      if (!defaultVoiceGroup) {
         throw new Error('Failed to create voice configuration')
       }
 
       // 4. Create Supabase auth user for the contact person
-      console.log('Creating auth user with email:', validatedData.contactEmail)
       
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email: validatedData.contactEmail,
@@ -231,11 +270,9 @@ export async function POST(request: Request) {
       })
 
       if (authError || !authUser.user) {
-        console.error('Auth error details:', authError)
         throw new Error(`Failed to create user account: ${authError?.message || 'Unknown error'}`)
       }
       
-      console.log('Auth user created successfully:', authUser.user.id)
 
       // 5. Create or update user profile (trigger might have already created it)
       let userProfile
@@ -249,7 +286,7 @@ export async function POST(request: Request) {
           .set({
             name: validatedData.contactName,
             birthDate: validatedData.contactBirthDate,
-            phone: validatedData.contactPhone,
+            phone: validatedData.contactPhone ?? null,
             isActive: true
           })
           .where(eq(userProfiles.id, authUser.user.id))
@@ -262,10 +299,14 @@ export async function POST(request: Request) {
           email: validatedData.contactEmail,
           name: validatedData.contactName,
           birthDate: validatedData.contactBirthDate,
-          phone: validatedData.contactPhone,
+          phone: validatedData.contactPhone ?? null,
           isActive: true
         }).returning()
         userProfile = created
+      }
+
+      if (!userProfile) {
+        throw new Error('Failed to create or update user profile')
       }
 
       // 6. Create member record
@@ -273,20 +314,24 @@ export async function POST(request: Request) {
         userProfileId: userProfile.id,
         choirId: choir.id,
         membershipTypeId: adminMembershipType.id,
-        voiceGroupId: voiceGroup.id,
-        voiceTypeId: voiceGroup.category === 'voice_type' ? voiceGroup.id : undefined,
+        voiceGroupId: defaultVoiceGroup.id,
+        voiceTypeId: null, // Admin doesn't need a specific voice type subdivision
         notes: 'Founding administrator'
       }).returning()
+
+      if (!member) {
+        throw new Error('Failed to create member record')
+      }
 
       // 7. Create initial membership period
       await tx.insert(membershipPeriods).values({
         memberId: member.id,
         startDate: new Date().toISOString().split('T')[0],
         membershipTypeId: adminMembershipType.id,
-        voiceGroupId: voiceGroup.id,
-        voiceTypeId: voiceGroup.category === 'voice_type' ? voiceGroup.id : undefined,
+        voiceGroupId: defaultVoiceGroup.id,
+        voiceTypeId: null, // Admin doesn't need a specific voice type subdivision
         notes: 'Initial administrator period'
-      })
+      } as any)
 
       return {
         choir,
@@ -307,7 +352,6 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Error provisioning choir:', error)
     
     if (error instanceof z.ZodError) {
       return NextResponse.json(

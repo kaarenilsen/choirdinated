@@ -17,7 +17,8 @@
     "type-check": "npm run type-check --workspaces",
     "db:generate": "cd web-admin && npm run db:generate",
     "db:migrate": "cd web-admin && npm run db:migrate",
-    "db:studio": "cd web-admin && npm run db:studio"
+    "db:studio": "cd web-admin && npm run db:studio",
+    "reset-password": "node scripts/reset-user-password-simple.cjs"
   },
   "keywords": [
     "choir",

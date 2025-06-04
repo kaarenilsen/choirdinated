@@ -18,8 +18,8 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Redirect authenticated users away from auth pages
-  if (req.nextUrl.pathname.startsWith('/auth')) {
+  // Redirect authenticated users away from auth pages and onboarding
+  if (req.nextUrl.pathname.startsWith('/auth') || req.nextUrl.pathname.startsWith('/onboarding')) {
     if (session) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }

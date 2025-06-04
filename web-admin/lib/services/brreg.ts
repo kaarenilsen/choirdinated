@@ -68,29 +68,29 @@ export interface OrganizationInfo {
   name: string
   organizationType: string
   organizationTypeCode: string
-  website?: string
+  website?: string | undefined
   address?: {
-    street?: string[]
-    postalCode?: string
-    city?: string
-    municipality?: string
-  }
+    street?: string[] | undefined
+    postalCode?: string | undefined
+    city?: string | undefined
+    municipality?: string | undefined
+  } | undefined
   businessAddress?: {
-    street?: string[]
-    postalCode?: string
-    city?: string
-    municipality?: string
-  }
-  foundingDate?: string
-  registrationDate?: string
-  isVATRegistered?: boolean
+    street?: string[] | undefined
+    postalCode?: string | undefined
+    city?: string | undefined
+    municipality?: string | undefined
+  } | undefined
+  foundingDate?: string | undefined
+  registrationDate?: string | undefined
+  isVATRegistered?: boolean | undefined
   primaryIndustry?: {
     code: string
     description: string
-  }
-  employees?: number
-  isBankrupt?: boolean
-  isUnderLiquidation?: boolean
+  } | undefined
+  employees?: number | undefined
+  isBankrupt?: boolean | undefined
+  isUnderLiquidation?: boolean | undefined
 }
 
 class BrregService {
@@ -124,7 +124,6 @@ class BrregService {
       return this.mapEntityToOrganizationInfo(entity)
 
     } catch (error) {
-      console.error('Error looking up organization:', error)
       throw error
     }
   }
@@ -161,7 +160,6 @@ class BrregService {
       return data._embedded.enheter.map(entity => this.mapEntityToOrganizationInfo(entity))
 
     } catch (error) {
-      console.error('Error searching organizations:', error)
       throw error
     }
   }
@@ -184,7 +182,7 @@ class BrregService {
     
     let sum = 0
     for (let i = 0; i < 8; i++) {
-      sum += digits[i] * weights[i]
+      sum += (digits[i] ?? 0) * (weights[i] ?? 0)
     }
     
     const remainder = sum % 11
@@ -196,7 +194,7 @@ class BrregService {
       return false // Invalid organization number
     }
     
-    return checkDigit === digits[8]
+    return checkDigit === (digits[8] ?? 0)
   }
 
   /**
@@ -220,16 +218,16 @@ class BrregService {
       organizationTypeCode: entity.organisasjonsform.kode,
       website: entity.hjemmeside,
       address: entity.postadresse ? {
-        street: entity.postadresse.adresse,
-        postalCode: entity.postadresse.postnummer,
-        city: entity.postadresse.poststed,
-        municipality: entity.postadresse.kommune
+        street: entity.postadresse.adresse ?? undefined,
+        postalCode: entity.postadresse.postnummer ?? undefined,
+        city: entity.postadresse.poststed ?? undefined,
+        municipality: entity.postadresse.kommune ?? undefined
       } : undefined,
       businessAddress: entity.forretningsadresse ? {
-        street: entity.forretningsadresse.adresse,
-        postalCode: entity.forretningsadresse.postnummer,
-        city: entity.forretningsadresse.poststed,
-        municipality: entity.forretningsadresse.kommune
+        street: entity.forretningsadresse.adresse ?? undefined,
+        postalCode: entity.forretningsadresse.postnummer ?? undefined,
+        city: entity.forretningsadresse.poststed ?? undefined,
+        municipality: entity.forretningsadresse.kommune ?? undefined
       } : undefined,
       foundingDate: entity.stiftelsesdato,
       registrationDate: entity.registreringsdatoEnhetsregisteret,
@@ -249,7 +247,6 @@ export const brregService = new BrregService()
 
 // Utility function to determine organization type for choir onboarding
 export function getChoirOrganizationType(brregData: OrganizationInfo): 'symphony' | 'opera' | 'independent' {
-  const orgType = brregData.organizationType.toLowerCase()
   const orgName = brregData.name.toLowerCase()
   const industry = brregData.primaryIndustry?.description.toLowerCase() || ''
 

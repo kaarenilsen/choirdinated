@@ -142,7 +142,7 @@ export async function GET() {
       choirId
     })
   } catch (error) {
-    console.error('Error fetching members:', error)
+    // Error logged for debugging
     return NextResponse.json(
       { error: 'Failed to fetch members' },
       { status: 500 }

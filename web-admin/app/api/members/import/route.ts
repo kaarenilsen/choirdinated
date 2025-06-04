@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/drizzle/db'
 import { userProfiles, members, membershipPeriods, membershipTypes, listOfValues } from '@/lib/drizzle/schema'
-import { eq, and, or } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { getCurrentUserChoirId } from '@/lib/auth-helpers'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: NextRequest) {
   try {
-    const { data, sourceSystem, fieldMappings } = await request.json()
+    const { data, sourceSystem } = await request.json()
     
-    console.log('🔄 Starting member import process...')
-    console.log('📦 Source system:', sourceSystem)
     
     // Get the current user's choir ID
     const choirId = await getCurrentUserChoirId()
     
-    console.log('📋 User choir ID:', choirId)
     
     if (!choirId) {
-      console.error('❌ No choir ID found for user')
       return NextResponse.json(
         { 
           error: 'Unable to determine choir ID from user session. Please ensure you have completed choir setup.',
@@ -188,12 +184,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a set of mapped field names to identify unmapped fields
-    const mappedFieldNames = new Set(Object.values(fieldMappings || {}))
+    // const mappedFieldNames = new Set(Object.values(fieldMappings || {}))
     
     // Import members
     for (const row of data) {
       try {
-        console.log(`🔄 Processing member: ${row.firstName} ${row.lastName} (${row.email})`)
         
         // Collect unmapped fields for additional_data
         const additionalData: Record<string, any> = {}
@@ -211,7 +206,6 @@ export async function POST(request: NextRequest) {
           additionalData._importDate = new Date().toISOString()
         }
         
-        console.log(`📊 Additional data fields:`, Object.keys(additionalData))
         
         // Check if user profile exists by email
         const existingProfile = await db
@@ -224,7 +218,6 @@ export async function POST(request: NextRequest) {
 
         if (existingProfile.length === 0) {
           // Create new auth user and user profile
-          console.log(`👤 Creating new auth user and profile for: ${row.email}`)
           
           const parsedBirthDate = parseBirthDate(row.birthDate)
           if (!parsedBirthDate) {
@@ -264,7 +257,6 @@ export async function POST(request: NextRequest) {
           }
           
           userProfileId = authUser.user.id
-          console.log(`✅ Created auth user with ID: ${userProfileId}`)
           
           // The user profile should be automatically created by the database trigger
           // Wait a moment for the trigger to execute
@@ -293,10 +285,8 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(userProfiles.id, userProfileId))
           
-          console.log(`✅ Updated user profile with import data`)
         } else {
           userProfileId = existingProfile[0]!.id
-          console.log(`♻️  Using existing user profile: ${userProfileId}`)
         }
 
         // Get IDs for voice group, voice type, and membership type
@@ -364,7 +354,6 @@ export async function POST(request: NextRequest) {
 
         if (existingMember.length === 0) {
           // Create new member with transaction to ensure consistency
-          console.log(`🎪 Creating new member record for: ${row.email}`)
           
           await db.transaction(async (tx) => {
             const memberId = uuidv4()
@@ -381,7 +370,6 @@ export async function POST(request: NextRequest) {
               additionalData: Object.keys(additionalData).length > 0 ? additionalData : null
             } as any)
             
-            console.log(`✅ Created member with ID: ${memberId}`)
 
             // Create initial membership period
             const startDate = parseRegistrationDate(row.registrationDate) || new Date().toISOString().split('T')[0]
@@ -397,17 +385,14 @@ export async function POST(request: NextRequest) {
               notes: null
             } as any)
             
-            console.log(`✅ Created membership period starting: ${startDate}`)
           })
 
           results.imported++
         } else {
           // Update existing member if needed
-          console.log(`♻️  Member already exists for: ${row.email}`)
           results.updated++
         }
       } catch (error) {
-        console.error('❌ Error importing member:', row, error)
         
         let errorMessage = 'Unknown error'
         
@@ -436,7 +421,6 @@ export async function POST(request: NextRequest) {
       results
     })
   } catch (error) {
-    console.error('Import error:', error)
     return NextResponse.json(
       { 
         error: 'Import failed', 

@@ -63,7 +63,6 @@ export default function ImportMembersPage() {
       // Move to next step
       setCurrentStep(2)
     } catch (error) {
-      console.error('Error parsing file:', error)
       alert('Kunne ikke lese filen. Vennligst sjekk at formatet er riktig.')
     } finally {
       setIsProcessing(false)
@@ -207,7 +206,6 @@ export default function ImportMembersPage() {
 
       router.push('/dashboard/members?imported=true')
     } catch (error) {
-      console.error('Import error:', error)
       alert('Det oppstod en feil under import. Vennligst prøv igjen.')
     } finally {
       setIsProcessing(false)

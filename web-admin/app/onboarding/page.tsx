@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { Music, Building, User, Settings, Upload, ArrowLeft, ArrowRight, Check, Search, Loader2 } from 'lucide-react'
+import { Music, Building, User, Settings, ArrowLeft, ArrowRight, Check, Search, Loader2 } from 'lucide-react'
 import { getChoirOrganizationType } from '@/lib/services/brreg'
 
 interface BrregData {
@@ -145,7 +145,6 @@ export default function OnboardingPage() {
         }
       }
     } catch (error) {
-      console.error('Error searching BRREG:', error)
       setBrregData(null)
       setData(prev => ({
         ...prev,
@@ -168,14 +167,14 @@ export default function OnboardingPage() {
   const nextStep = () => {
     const nextIndex = currentStepIndex + 1
     if (nextIndex < steps.length) {
-      setCurrentStep(steps[nextIndex].id)
+      setCurrentStep(steps[nextIndex]!.id)
     }
   }
 
   const prevStep = () => {
     const prevIndex = currentStepIndex - 1
     if (prevIndex >= 0) {
-      setCurrentStep(steps[prevIndex].id)
+      setCurrentStep(steps[prevIndex]!.id)
     }
   }
 
@@ -188,7 +187,7 @@ export default function OnboardingPage() {
       })
 
       if (response.ok) {
-        const result = await response.json()
+        await response.json()
         // After successful choir creation, sign in the user
         const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs')
         const supabase = createClientComponentClient()
@@ -206,12 +205,10 @@ export default function OnboardingPage() {
           router.push('/auth/signin')
         }
       } else {
-        const error = await response.json()
-        console.error('Error provisioning choir:', error)
+        await response.json()
         alert('Det oppstod en feil under opprettelsen av koret. Prøv igjen.')
       }
     } catch (error) {
-      console.error('Error:', error)
       alert('Det oppstod en feil under opprettelsen av koret. Prøv igjen.')
     }
   }
@@ -267,7 +264,7 @@ export default function OnboardingPage() {
         {/* Step Content */}
         <Card>
           <CardHeader>
-            <CardTitle>{steps[currentStepIndex].title}</CardTitle>
+            <CardTitle>{steps[currentStepIndex]!.title}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             {currentStep === 'choir-name' && (

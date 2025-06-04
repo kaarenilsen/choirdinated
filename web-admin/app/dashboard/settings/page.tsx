@@ -1,8 +1,7 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Upload, Users, Music, FileText, Shield, Bell, Database } from 'lucide-react'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Upload, Music, FileText, Shield, Bell, Database } from 'lucide-react'
 import Link from 'next/link'
 
 const settingsCategories = [

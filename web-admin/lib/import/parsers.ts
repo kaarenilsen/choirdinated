@@ -5,16 +5,20 @@ export async function parseCSV(file: File): Promise<any[]> {
   if (lines.length === 0) return []
   
   // Parse headers
-  const headers = parseCSVLine(lines[0])
+  const firstLine = lines[0]
+  if (!firstLine) return []
+  const headers = parseCSVLine(firstLine)
   
   // Parse data rows
   const data = []
   for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i])
+    const line = lines[i]
+    if (!line) continue
+    const values = parseCSVLine(line)
     if (values.length === headers.length) {
       const row: Record<string, string> = {}
       headers.forEach((header, index) => {
-        row[header] = values[index]
+        row[header] = values[index] ?? ''
       })
       data.push(row)
     }

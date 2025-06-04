@@ -126,8 +126,7 @@ export default function MembersPage() {
       }
 
       const data = await response.json()
-      console.log('Fetched members data:', data.members.length, 'members found')
-      console.log('Choir ID:', data.choirId)
+      // Data fetched successfully
 
       // Set the data from API response
       setMembers(data.members)
@@ -135,7 +134,7 @@ export default function MembersPage() {
       setMembershipTypes(data.membershipTypes)
 
     } catch (err) {
-      console.error('Error in fetchData:', err)
+      // Error handled in catch block
       setError('En feil oppstod ved henting av data')
     } finally {
       setLoading(false)

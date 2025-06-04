@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, Circle, Users, Settings, Calendar, Music, FileText, LucideIcon } from 'lucide-react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 interface TodoItem {
@@ -96,7 +95,6 @@ export default function DashboardPage() {
         setShowWelcome(!allCompleted)
       } catch (error) {
         // If there's an error parsing, clear and reload
-        console.error('Error parsing saved todos:', error)
         localStorage.removeItem('onboarding-todos')
         window.location.reload()
       }
@@ -171,7 +169,6 @@ export default function DashboardPage() {
             {todos.map((todo) => {
               const Icon = iconMap[todo.iconName] || Users // Fallback to Users icon if undefined
               if (!Icon) {
-                console.error(`Icon not found for: ${todo.iconName}`)
                 return null
               }
               return (

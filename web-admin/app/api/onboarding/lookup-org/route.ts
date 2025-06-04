@@ -51,8 +51,6 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Error looking up organization:', error)
-    
     return NextResponse.json(
       { error: 'Failed to lookup organization' },
       { status: 500 }
