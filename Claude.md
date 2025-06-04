@@ -19,182 +19,6 @@
 1. **Web Admin Portal** - Next.js 14+, TypeScript, Drizzle ORM, shadcn/ui, Vercel
 2. **Mobile Member App** - React Native + Expo, TypeScript, Supabase client
 
-### Core Domain Model
-
-```typescript
-// Member Management - Core Entity
-interface Member {
-  id: string
-  user_profile_id: string
-  choir_id: string
-  membership_type_id: string
-  voice_group_id: string // Required
-  voice_type_id?: string // Optional subdivision
-  birth_date: Date // Required
-  notes?: string
-}
-
-interface MembershipPeriod {
-  id: string
-  member_id: string
-  start_date: Date
-  end_date?: Date // null if active
-  membership_type_id: string
-  voice_group_id: string
-  voice_type_id?: string
-  end_reason?: string
-}
-
-interface MembershipLeave {
-  id: string
-  member_id: string
-  leave_type: string // 'maternity', 'work_travel', 'illness', 'personal'
-  start_date: Date
-  expected_return_date?: Date
-  actual_return_date?: Date
-  reason: string
-  status: 'pending' | 'approved' | 'rejected' | 'active' | 'completed'
-  approved_by?: string
-}
-
-interface MembershipType {
-  id: string
-  choir_id: string
-  name: string
-  display_name: string
-  is_active_membership: boolean // Included in "all" communications
-  can_access_system: boolean // System access control
-  can_vote: boolean
-  sort_order: number
-}
-
-// Events & Attendance
-interface Event {
-  id: string
-  title: string
-  type_id: string
-  status_id: string
-  start_time: timestamp
-  end_time: timestamp
-  location: string
-  attendance_mode: 'opt_in' | 'opt_out'
-  target_membership_types: string[]
-  target_voice_groups: string[]
-  target_voice_types: string[]
-  include_all_active: boolean
-  is_recurring: boolean
-  recurrence_rule?: RecurrenceRule
-  exclude_holidays: boolean
-}
-
-interface EventAttendance {
-  id: string
-  event_id: string
-  member_id: string
-  intended_status: 'attending' | 'not_attending' | 'tentative' | 'not_responded'
-  intended_reason?: string
-  actual_status?: 'present' | 'absent' | 'late'
-  marked_by?: string // Group leader
-  marked_at?: timestamp
-}
-
-// List of Values - Dynamic Configuration
-interface ListOfValues {
-  id: string
-  choir_id: string
-  category: 'user_role' | 'voice_type' | 'voice_group' | 'event_type' | 'event_status'
-  value: string
-  display_name: string
-  is_active: boolean
-  sort_order: number
-  parent_id?: string // For voice_type -> voice_group hierarchy
-}
-```
-
-## Database Schema (Drizzle ORM)
-
-```typescript
-// Core Tables
-export const userProfiles = pgTable('user_profiles', {
-  id: uuid('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  name: text('name').notNull(),
-  birthDate: date('birth_date').notNull(),
-  phone: text('phone'),
-  emergencyContact: text('emergency_contact'),
-  emergencyPhone: text('emergency_phone'),
-  isActive: boolean('is_active').default(true),
-  createdAt: timestamp('created_at').defaultNow()
-})
-
-export const members = pgTable('members', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userProfileId: uuid('user_profile_id').references(() => userProfiles.id).notNull(),
-  choirId: uuid('choir_id').references(() => choirs.id).notNull(),
-  membershipTypeId: uuid('membership_type_id').references(() => membershipTypes.id).notNull(),
-  voiceGroupId: uuid('voice_group_id').references(() => listOfValues.id).notNull(),
-  voiceTypeId: uuid('voice_type_id').references(() => listOfValues.id),
-  notes: text('notes'),
-  createdAt: timestamp('created_at').defaultNow()
-})
-
-export const membershipPeriods = pgTable('membership_periods', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  memberId: uuid('member_id').references(() => members.id).notNull(),
-  startDate: date('start_date').notNull(),
-  endDate: date('end_date'),
-  membershipTypeId: uuid('membership_type_id').references(() => membershipTypes.id).notNull(),
-  voiceGroupId: uuid('voice_group_id').references(() => listOfValues.id).notNull(),
-  voiceTypeId: uuid('voice_type_id').references(() => listOfValues.id),
-  endReason: text('end_reason'),
-  createdAt: timestamp('created_at').defaultNow()
-})
-
-export const membershipLeaves = pgTable('membership_leaves', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  memberId: uuid('member_id').references(() => members.id).notNull(),
-  leaveType: text('leave_type').notNull(),
-  startDate: date('start_date').notNull(),
-  expectedReturnDate: date('expected_return_date'),
-  actualReturnDate: date('actual_return_date'),
-  reason: text('reason').notNull(),
-  status: text('status').notNull().default('pending'),
-  approvedBy: uuid('approved_by').references(() => userProfiles.id),
-  approvedAt: timestamp('approved_at')
-})
-
-export const events = pgTable('events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  choirId: uuid('choir_id').references(() => choirs.id),
-  title: text('title').notNull(),
-  typeId: uuid('type_id').references(() => listOfValues.id),
-  statusId: uuid('status_id').references(() => listOfValues.id),
-  startTime: timestamp('start_time').notNull(),
-  endTime: timestamp('end_time').notNull(),
-  location: text('location').notNull(),
-  attendanceMode: text('attendance_mode').notNull().default('opt_out'),
-  targetMembershipTypes: jsonb('target_membership_types').default('[]'),
-  targetVoiceGroups: jsonb('target_voice_groups').default('[]'),
-  targetVoiceTypes: jsonb('target_voice_types').default('[]'),
-  includeAllActive: boolean('include_all_active').default(true),
-  isRecurring: boolean('is_recurring').default(false),
-  excludeHolidays: boolean('exclude_holidays').default(true),
-  createdBy: uuid('created_by').references(() => userProfiles.id)
-})
-
-export const eventAttendance = pgTable('event_attendance', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id').references(() => events.id),
-  memberId: uuid('member_id').references(() => members.id),
-  intendedStatus: text('intended_status').notNull().default('not_responded'),
-  intendedReason: text('intended_reason'),
-  actualStatus: text('actual_status'),
-  markedBy: uuid('marked_by').references(() => userProfiles.id),
-  markedAt: timestamp('marked_at'),
-  memberResponseAt: timestamp('member_response_at')
-})
-```
-
 ## Key Features
 
 ### Member Management
@@ -211,6 +35,8 @@ export const eventAttendance = pgTable('event_attendance', {
   - **SSAATTBB**: Symphonic with 1st/2nd divisions
   - **SMATBB**: Operatic (Soprano, Mezzo, Alto, Tenor, Baritone, Bass)
 - **Hierarchical**: Voice groups contain voice types
+  - When targeting "Soprano", automatically includes "1. Soprano" and "2. Soprano"
+  - Voice types inherit all permissions and targeting from their parent voice group
 - **Dynamic targeting** for events and communications
 
 ### Event & Attendance System
@@ -257,7 +83,149 @@ export const eventAttendance = pgTable('event_attendance', {
 3. **Leave impact**: Show unavailable count separately
 4. **Group leader view**: Attendance for their voice section only
 
+## Database Migration Guidelines
+
+**CRITICAL**: All database changes MUST follow this exact workflow to maintain consistency across the project.
+
+### Migration Workflow (MANDATORY)
+
+1. **Always use Supabase migration system**
+   ```bash
+   # Create new migration
+   supabase migration new <descriptive_name>
+   
+   # Edit the generated SQL file in supabase/migrations/
+   # Add your schema changes (CREATE TABLE, ALTER TABLE, etc.)
+   ```
+
+2. **Supabase migrations are global to the project**
+   - All schema changes affect the entire database
+   - Migrations run in chronological order
+   - Never edit existing migration files after they're applied
+
+3. **Always run migrations with Supabase client**
+   ```bash
+   # Apply pending migrations
+   supabase db push
+   
+   # OR for local development
+   supabase migration up
+   ```
+
+4. **Sync Drizzle ORM model with database (MANDATORY)**
+   ```bash
+   # Navigate to shared/database
+   cd shared/database
+   
+   # Regenerate types from live database
+   npm run db:generate-types
+   
+   # Update Drizzle schema to match database
+   # Manually sync src/types.ts with new database schema
+   ```
+
+5. **Build and install shared database module**
+   ```bash
+   # Build the shared database package
+   cd shared/database
+   npm run build
+   
+   # Install in both applications
+   cd ../../web-admin
+   npm install
+   
+   cd ../mobile-app  
+   npm install
+   ```
+
+6. **Rebuild applications and fix compile errors**
+   ```bash
+   # Build web-admin and fix TypeScript errors
+   cd web-admin
+   npm run build
+   # Fix any compilation errors from ORM model changes
+   
+   # Build mobile-app and fix TypeScript errors  
+   cd ../mobile-app
+   npm run build
+   # Fix any compilation errors from ORM model changes
+   ```
+
+### Migration Best Practices
+
+- **Test migrations locally first** using `supabase db reset` and `supabase migration up`
+- **Always backup production** before applying migrations
+- **Include RLS policies** in migration files when adding new tables
+- **Maintain data isolation** - all new tables must include `choir_id` and appropriate RLS
+- **Never break existing queries** - use backward-compatible changes when possible
+- **Document breaking changes** in migration comments
+
+### Example Migration Workflow
+
+```sql
+-- supabase/migrations/20250604120000_add_task_management.sql
+
+-- Add task management tables
+CREATE TABLE tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  choir_id UUID NOT NULL REFERENCES choirs(id),
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  assigned_to UUID REFERENCES user_profiles(id),
+  due_date TIMESTAMPTZ,
+  created_by UUID NOT NULL REFERENCES user_profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS policies for data isolation
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can only access tasks from their choirs"
+ON tasks FOR ALL
+USING (choir_id IN (SELECT get_user_choir_ids()));
+```
+
 ## Development Guidelines
+
+### Database Query Guidelines (CRITICAL)
+
+**ALWAYS use Drizzle ORM for database queries in the web-admin application**
+
+- **Web Admin Portal**: MUST use Drizzle ORM for all database operations
+- **Mobile App**: Use Supabase client (React Native environment)
+- **API Routes**: Use Drizzle ORM for server-side database queries
+
+**Why Drizzle ORM is mandatory for web-admin:**
+- Type safety prevents runtime errors
+- Complex joins are properly handled (LEFT JOIN vs INNER JOIN)
+- Better handling of nullable relationships
+- Consistent query patterns across the application
+- Compile-time validation of schema changes
+
+**Common anti-pattern to avoid:**
+```typescript
+// ❌ DON'T: Direct Supabase queries in web-admin
+const { data } = await supabase
+  .from('members')
+  .select('*, user_profiles(*)')
+  .eq('choir_id', choirId)
+
+// ✅ DO: Use Drizzle ORM in API routes
+const membersData = await db
+  .select({
+    member: members,
+    userProfile: userProfiles,
+  })
+  .from(members)
+  .leftJoin(userProfiles, eq(members.userProfileId, userProfiles.id))
+  .where(eq(members.choirId, choirId))
+```
+
+**Implementation pattern:**
+1. Create API routes using Drizzle ORM for database access
+2. Client components fetch from API routes (not direct DB access)
+3. Use proper authentication in API routes via Supabase auth helpers
 
 ### Code Organization
 ```
