@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { CheckCircle2, Plus, Search, Filter, Download, Settings, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react'
+import { CheckCircle2, Plus, Search, Filter, Download, Settings, ChevronUp, ChevronDown, Eye, EyeOff, GripVertical } from 'lucide-react'
 import Link from 'next/link'
 
 type Member = {
@@ -88,6 +88,10 @@ export default function MembersPage() {
   const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS)
   const [showColumnSettings, setShowColumnSettings] = useState(false)
   
+  // Drag state
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+  
   // Sorting
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' })
 
@@ -144,6 +148,24 @@ export default function MembersPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Load saved column order from localStorage on mount
+  useEffect(() => {
+    const savedColumns = localStorage.getItem('memberTableColumns')
+    if (savedColumns) {
+      try {
+        const parsed = JSON.parse(savedColumns)
+        // Merge with default columns to ensure new columns are included
+        const mergedColumns = DEFAULT_COLUMNS.map(defaultCol => {
+          const saved = parsed.find((col: ColumnConfig) => col.key === defaultCol.key)
+          return saved || defaultCol
+        })
+        setColumns(mergedColumns)
+      } catch {
+        // If parsing fails, use default columns
+      }
+    }
+  }, [])
 
   const filteredAndSortedMembers = useMemo(() => {
     let filtered = members.filter(member => {
@@ -226,6 +248,70 @@ export default function MembersPage() {
         col.key === columnKey ? { ...col, visible: !col.visible } : col
       )
     )
+  }
+
+  // Save column order to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('memberTableColumns', JSON.stringify(columns))
+  }, [columns])
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent<HTMLTableCellElement>, columnKey: string) => {
+    setDraggedColumn(columnKey)
+    e.dataTransfer.effectAllowed = 'move'
+    // Add a slight delay to distinguish between click and drag
+    setTimeout(() => {
+      if (draggedColumn === columnKey) {
+        // This is actually a drag, not a click
+      }
+    }, 100)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDragEnter = (columnKey: string) => {
+    setDragOverColumn(columnKey)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLTableCellElement>, targetColumnKey: string) => {
+    e.preventDefault()
+    
+    if (!draggedColumn || draggedColumn === targetColumnKey) {
+      setDraggedColumn(null)
+      setDragOverColumn(null)
+      return
+    }
+
+    const newColumns = [...columns]
+    const draggedIndex = newColumns.findIndex(col => col.key === draggedColumn)
+    const targetIndex = newColumns.findIndex(col => col.key === targetColumnKey)
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const [draggedCol] = newColumns.splice(draggedIndex, 1)
+      if (draggedCol) {
+        newColumns.splice(targetIndex, 0, draggedCol)
+        setColumns(newColumns)
+      }
+    }
+
+    setDraggedColumn(null)
+    setDragOverColumn(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedColumn(null)
+    setDragOverColumn(null)
+  }
+
+  const resetColumnOrder = () => {
+    setColumns(DEFAULT_COLUMNS)
   }
 
   const visibleColumns = columns.filter(col => col.visible)
@@ -331,8 +417,15 @@ export default function MembersPage() {
       {showColumnSettings && (
         <Card>
           <CardHeader>
-            <CardTitle>Kolonneinnstillinger</CardTitle>
-            <CardDescription>Velg hvilke kolonner som skal vises i tabellen</CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>Kolonneinnstillinger</CardTitle>
+                <CardDescription>Velg hvilke kolonner som skal vises i tabellen. Du kan dra kolonnehodene for å endre rekkefølgen.</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={resetColumnOrder}>
+                Tilbakestill
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -435,11 +528,25 @@ export default function MembersPage() {
                   {visibleColumns.map(column => (
                     <TableHead 
                       key={column.key} 
-                      className={`${column.sortable ? 'cursor-pointer hover:bg-muted/50' : ''} ${column.width ? `w-[${column.width}]` : ''}`}
-                      onClick={column.sortable ? () => handleSort(column.key) : undefined}
+                      className={`
+                        ${column.sortable ? 'cursor-pointer hover:bg-muted/50' : 'cursor-grab'} 
+                        ${column.width ? `w-[${column.width}]` : ''}
+                        ${draggedColumn === column.key ? 'opacity-50 cursor-grabbing' : ''}
+                        ${dragOverColumn === column.key ? 'bg-blue-50 border-blue-200' : ''}
+                        transition-all duration-200
+                      `}
+                      onClick={column.sortable && !draggedColumn ? () => handleSort(column.key) : undefined}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, column.key)}
+                      onDragOver={handleDragOver}
+                      onDragEnter={() => handleDragEnter(column.key)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, column.key)}
+                      onDragEnd={handleDragEnd}
                     >
-                      <div className="flex items-center space-x-1">
-                        <span>{column.label}</span>
+                      <div className="flex items-center space-x-1 group">
+                        <GripVertical className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <span className="select-none">{column.label}</span>
                         {column.sortable && sortConfig.key === column.key && (
                           sortConfig.direction === 'asc' ? 
                             <ChevronUp className="h-4 w-4" /> : 
