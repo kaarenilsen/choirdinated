@@ -161,7 +161,7 @@ export const createEventSchema = baseEventSchema.omit({ id: true, createdAt: tru
   path: ['endTime']
 })
 
-export const updateEventSchema = createEventSchema.partial()
+export const updateEventSchema = baseEventSchema.omit({ id: true, createdAt: true }).partial()
 
 export const attendanceResponseSchema = z.object({
   intendedStatus: z.enum(['attending', 'not_attending', 'tentative']),
