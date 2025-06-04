@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "cd ../shared/database && npm install && npm run build && cd ../../web-admin && next build",
+    "vercel-build": "cd ../shared/database && npm install --include=dev && npm run build && cd ../../web-admin && next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
