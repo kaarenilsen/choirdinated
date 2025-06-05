@@ -95,6 +95,41 @@ export const membershipLeaves = pgTable('membership_leaves', {
   notes: text('notes')
 })
 
+export const seasons = pgTable('seasons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  choirId: uuid('choir_id').references(() => choirs.id).notNull(),
+  name: text('name').notNull(),
+  displayName: text('display_name').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  description: text('description'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  createdBy: uuid('created_by').references(() => userProfiles.id)
+})
+
+export const eventSheetMusic = pgTable('event_sheet_music', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').references(() => events.id).notNull(),
+  sheetMusicId: uuid('sheet_music_id').references(() => sheetMusic.id).notNull(),
+  orderIndex: integer('order_index').default(0),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow()
+})
+
+export const attendancePermissions = pgTable('attendance_permissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  choirId: uuid('choir_id').references(() => choirs.id).notNull(),
+  userProfileId: uuid('user_profile_id').references(() => userProfiles.id).notNull(),
+  voiceGroupId: uuid('voice_group_id').references(() => listOfValues.id),
+  voiceTypeId: uuid('voice_type_id').references(() => listOfValues.id),
+  canRecordAllVoices: boolean('can_record_all_voices').default(false),
+  isActive: boolean('is_active').default(true),
+  grantedBy: uuid('granted_by').references(() => userProfiles.id),
+  grantedAt: timestamp('granted_at').defaultNow(),
+  notes: text('notes')
+})
+
 export const events: any = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
   choirId: uuid('choir_id').references(() => choirs.id),
@@ -106,6 +141,7 @@ export const events: any = pgTable('events', {
   endTime: timestamp('end_time').notNull(),
   location: text('location').notNull(),
   setlistId: uuid('setlist_id').references(() => setlists.id),
+  seasonId: uuid('season_id').references(() => seasons.id),
   attendanceMode: text('attendance_mode').notNull().default('opt_out'),
   targetMembershipTypes: jsonb('target_membership_types').default('[]'),
   targetVoiceGroups: jsonb('target_voice_groups').default('[]'),
@@ -131,6 +167,9 @@ export const eventAttendance = pgTable('event_attendance', {
   markedBy: uuid('marked_by').references(() => userProfiles.id),
   markedAt: timestamp('marked_at'),
   memberResponseAt: timestamp('member_response_at'),
+  arrivalTime: timestamp('arrival_time'),
+  departureTime: timestamp('departure_time'),
+  attendanceQuality: text('attendance_quality'),
   notes: text('notes')
 })
 
@@ -330,6 +369,10 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
     fields: [events.setlistId],
     references: [setlists.id]
   }),
+  season: one(seasons, {
+    fields: [events.seasonId],
+    references: [seasons.id]
+  }),
   createdByUser: one(userProfiles, {
     fields: [events.createdBy],
     references: [userProfiles.id]
@@ -343,7 +386,8 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
     relationName: 'parent_event'
   }),
   attendance: many(eventAttendance),
-  attendanceExpectations: many(attendanceExpectations)
+  attendanceExpectations: many(attendanceExpectations),
+  eventSheetMusic: many(eventSheetMusic)
 }))
 
 export const sheetMusicRelations = relations(sheetMusic, ({ one, many }) => ({
@@ -352,7 +396,8 @@ export const sheetMusicRelations = relations(sheetMusic, ({ one, many }) => ({
     references: [userProfiles.id]
   }),
   audioFiles: many(audioFiles),
-  setlistItems: many(setlistItems)
+  setlistItems: many(setlistItems),
+  eventSheetMusic: many(eventSheetMusic)
 }))
 
 export const audioFilesRelations = relations(audioFiles, ({ one }) => ({
@@ -415,7 +460,9 @@ export const choirsRelations = relations(choirs, ({ many }) => ({
   members: many(members),
   membershipTypes: many(membershipTypes),
   listOfValues: many(listOfValues),
-  events: many(events)
+  events: many(events),
+  seasons: many(seasons),
+  attendancePermissions: many(attendancePermissions)
 }))
 
 export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
@@ -427,7 +474,12 @@ export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
   infoFeedPosts: many(infoFeed),
   createdChats: many(chats),
   sentMessages: many(messages),
-  approvedLeaves: many(membershipLeaves)
+  approvedLeaves: many(membershipLeaves),
+  createdSeasons: many(seasons),
+  attendancePermissions: many(attendancePermissions),
+  grantedAttendancePermissions: many(attendancePermissions, {
+    relationName: 'granted_by_user'
+  })
 }))
 
 export const membershipTypesRelations = relations(membershipTypes, ({ one, many }) => ({
@@ -479,5 +531,54 @@ export const attendanceExpectationsRelations = relations(attendanceExpectations,
   event: one(events, {
     fields: [attendanceExpectations.eventId],
     references: [events.id]
+  })
+}))
+
+export const seasonsRelations = relations(seasons, ({ one, many }) => ({
+  choir: one(choirs, {
+    fields: [seasons.choirId],
+    references: [choirs.id]
+  }),
+  createdByUser: one(userProfiles, {
+    fields: [seasons.createdBy],
+    references: [userProfiles.id]
+  }),
+  events: many(events)
+}))
+
+export const eventSheetMusicRelations = relations(eventSheetMusic, ({ one }) => ({
+  event: one(events, {
+    fields: [eventSheetMusic.eventId],
+    references: [events.id]
+  }),
+  sheetMusic: one(sheetMusic, {
+    fields: [eventSheetMusic.sheetMusicId],
+    references: [sheetMusic.id]
+  })
+}))
+
+export const attendancePermissionsRelations = relations(attendancePermissions, ({ one }) => ({
+  choir: one(choirs, {
+    fields: [attendancePermissions.choirId],
+    references: [choirs.id]
+  }),
+  userProfile: one(userProfiles, {
+    fields: [attendancePermissions.userProfileId],
+    references: [userProfiles.id]
+  }),
+  voiceGroup: one(listOfValues, {
+    fields: [attendancePermissions.voiceGroupId],
+    references: [listOfValues.id],
+    relationName: 'attendance_voice_group'
+  }),
+  voiceType: one(listOfValues, {
+    fields: [attendancePermissions.voiceTypeId],
+    references: [listOfValues.id],
+    relationName: 'attendance_voice_type'
+  }),
+  grantedByUser: one(userProfiles, {
+    fields: [attendancePermissions.grantedBy],
+    references: [userProfiles.id],
+    relationName: 'granted_by_user'
   })
 }))
