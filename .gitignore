@@ -92,8 +92,8 @@ jspm_packages/
 .expo/
 .expo-shared/
 
-# Drizzle
-drizzle/
+# Drizzle (only ignore root drizzle directory, not lib/drizzle)
+/drizzle/
 
 # Supabase
 .supabase/
