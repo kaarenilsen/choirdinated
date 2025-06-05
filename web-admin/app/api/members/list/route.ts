@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/drizzle/db'
-import { members, userProfiles, membershipTypes, listOfValues, membershipLeaves } from '@/lib/drizzle/schema'
+import { members, userProfiles, membershipTypes, listOfValues, membershipLeaves, membershipPeriods } from '@/lib/drizzle/schema'
 import { eq, and } from 'drizzle-orm'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
@@ -62,11 +62,10 @@ export async function GET() {
         .map(vt => [vt.memberId, vt.voiceType])
     )
 
-    // Fetch membership leaves
+    // Fetch all membership leaves (we'll filter by approval status and date range later)
     const leavesData = await db
       .select()
       .from(membershipLeaves)
-      .where(eq(membershipLeaves.status, 'approved'))
 
     // Group leaves by member ID
     const leavesByMemberId = leavesData.reduce((acc, leave) => {
@@ -75,18 +74,88 @@ export async function GET() {
       return acc
     }, {} as Record<string, typeof leavesData>)
 
+    // Fetch membership periods for all members
+    const membershipPeriodsData = await db
+      .select({
+        memberId: membershipPeriods.memberId,
+        startDate: membershipPeriods.startDate,
+        endDate: membershipPeriods.endDate,
+      })
+      .from(membershipPeriods)
+      .innerJoin(members, eq(membershipPeriods.memberId, members.id))
+      .where(eq(members.choirId, choirId))
+      .orderBy(membershipPeriods.startDate)
+
+    // Group periods by member ID and calculate first/last start dates
+    const periodsByMemberId = membershipPeriodsData.reduce((acc, period) => {
+      if (!acc[period.memberId]) acc[period.memberId] = []
+      acc[period.memberId]!.push(period)
+      return acc
+    }, {} as Record<string, typeof membershipPeriodsData>)
+
+    // Calculate first and last membership start dates and determine active status
+    const membershipDates = Object.entries(periodsByMemberId).reduce((acc, [memberId, periods]) => {
+      const sortedPeriods = periods.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      const firstStartDate = sortedPeriods[0]?.startDate
+      const lastStartDate = sortedPeriods[sortedPeriods.length - 1]?.startDate
+      
+      // Check if member has an active membership period (no end date)
+      const hasActivePeriod = periods.some(period => period.endDate === null)
+      
+      acc[memberId] = {
+        firstMembershipStartDate: firstStartDate,
+        lastMembershipStartDate: lastStartDate,
+        hasActivePeriod
+      }
+      return acc
+    }, {} as Record<string, { firstMembershipStartDate: string | undefined, lastMembershipStartDate: string | undefined, hasActivePeriod: boolean }>)
+
     // Transform data
     const transformedMembers = membersData.map((row) => {
       const { member, userProfile, membershipType, voiceGroup } = row
       const voiceType = voiceTypeMap.get(member.id)
       const memberLeaves = leavesByMemberId[member.id] || []
+      const memberDates = membershipDates[member.id]
       
+      // Check if member is currently on leave based on date ranges AND approval status
+      const now = new Date()
       const activeLeave = memberLeaves.find((leave) => {
-        const now = new Date()
+        // Leave must be approved first
+        if (leave.status !== 'approved') {
+          return false
+        }
+        
         const startDate = new Date(leave.startDate)
         const endDate = leave.expectedReturnDate ? new Date(leave.expectedReturnDate) : null
-        return startDate <= now && (!endDate || endDate > now)
+        
+        // Member is on leave if:
+        // 1. Leave is approved (checked above)
+        // 2. Leave has started (startDate <= now)
+        // 3. Leave hasn't ended yet (endDate is null OR endDate > now)
+        // 4. If they have actualReturnDate and it's in the past, they're not on leave anymore
+        if (leave.actualReturnDate) {
+          const actualReturn = new Date(leave.actualReturnDate)
+          return startDate <= now && now < actualReturn
+        }
+        
+        return startDate <= now && (!endDate || now < endDate)
       })
+
+      // Determine membership status based on active period and leave status
+      let membershipStatus = 'Sluttet' // Default to inactive
+      let isActive = false
+      
+      if (memberDates?.hasActivePeriod) {
+        isActive = true
+        if (activeLeave) {
+          membershipStatus = 'I permisjon'
+        } else {
+          membershipStatus = 'Aktiv'
+        }
+      }
+      
+      // Note: Only active members can be on leave
+      // If a member has no active period, they cannot be "I permisjon"
 
       return {
         id: member.id,
@@ -97,12 +166,14 @@ export async function GET() {
         voice_group: voiceGroup?.displayName || 'Ikke tildelt',
         voice_type: voiceType?.displayName || null,
         membership_type: membershipType?.displayName || 'Ukjent type',
-        membership_status: activeLeave ? 'På permisjon' : 'Aktiv',
-        created_at: member.createdAt?.toISOString() || '',
+        membership_status: membershipStatus,
+        created_at: memberDates?.lastMembershipStartDate || member.createdAt?.toISOString() || '',
+        first_membership_date: memberDates?.firstMembershipStartDate || null,
         emergency_contact: userProfile?.emergencyContact || null,
         emergency_phone: userProfile?.emergencyPhone || null,
-        is_on_leave: !!activeLeave,
-        leave_reason: activeLeave?.reason || null
+        is_on_leave: isActive && !!activeLeave, // Only active members can be on leave
+        leave_reason: activeLeave?.reason || null,
+        is_active: isActive
       }
     })
 

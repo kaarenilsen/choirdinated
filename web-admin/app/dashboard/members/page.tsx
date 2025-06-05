@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,10 +23,12 @@ type Member = {
   membership_type: string
   membership_status: string
   created_at: string
+  first_membership_date: string | null
   emergency_contact: string | null
   emergency_phone: string | null
   is_on_leave: boolean
   leave_reason: string | null
+  is_active: boolean
 }
 
 type VoiceGroup = {
@@ -60,7 +62,8 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'membership_status', label: 'Status', visible: true, sortable: true },
   { key: 'emergency_contact', label: 'Nødkontakt', visible: false, sortable: false },
   { key: 'emergency_phone', label: 'Nødtelefon', visible: false, sortable: false },
-  { key: 'created_at', label: 'Medlem siden', visible: false, sortable: true },
+  { key: 'created_at', label: 'Siste medlemsperiode startet', visible: false, sortable: true },
+  { key: 'first_membership_date', label: 'Ble medlem første gang', visible: false, sortable: true },
 ]
 
 type SortConfig = {
@@ -70,6 +73,7 @@ type SortConfig = {
 
 export default function MembersPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [showImportSuccess, setShowImportSuccess] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [voiceGroups, setVoiceGroups] = useState<VoiceGroup[]>([])
@@ -82,10 +86,71 @@ export default function MembersPage() {
   const [selectedVoiceGroup, setSelectedVoiceGroup] = useState<string>('all')
   const [selectedMembershipType, setSelectedMembershipType] = useState<string>('all')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
+  const [showActiveOnly, setShowActiveOnly] = useState(true) // Default to show only active members
   const [showOnLeaveOnly, setShowOnLeaveOnly] = useState(false)
   
   // Column configuration
-  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS)
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
+    // Load saved column configuration from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const savedColumns = localStorage.getItem('memberTableColumns')
+        // Check if we have a version mismatch (for schema changes like adding new columns)
+        const currentVersion = '2024-02-activestatus' // Update this when schema changes
+        const savedVersion = localStorage.getItem('memberTableColumnsVersion')
+        
+        if (savedVersion !== currentVersion) {
+          // Clear old preferences when schema changes
+          localStorage.removeItem('memberTableColumns')
+          localStorage.setItem('memberTableColumnsVersion', currentVersion)
+          return DEFAULT_COLUMNS
+        }
+        
+        if (savedColumns) {
+          const parsed = JSON.parse(savedColumns)
+          // Validate that the parsed data has the correct structure
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].key) {
+            // Merge saved columns with defaults to handle schema changes
+            const mergedColumns = [...DEFAULT_COLUMNS]
+            
+            // Update visibility and order based on saved preferences
+            const savedColumnKeys = parsed.map((col: ColumnConfig) => col.key)
+            
+            // First, update existing columns with saved preferences
+            mergedColumns.forEach((col, index) => {
+              const savedCol = parsed.find((saved: ColumnConfig) => saved.key === col.key)
+              if (savedCol) {
+                mergedColumns[index] = { ...col, visible: savedCol.visible }
+              }
+            })
+            
+            // Then, reorder based on saved order (only for columns that exist in both)
+            const reorderedColumns: ColumnConfig[] = []
+            
+            // Add columns in saved order
+            parsed.forEach((savedCol: ColumnConfig) => {
+              const matchingCol = mergedColumns.find(col => col.key === savedCol.key)
+              if (matchingCol) {
+                reorderedColumns.push(matchingCol)
+              }
+            })
+            
+            // Add any new columns that weren't in saved preferences
+            mergedColumns.forEach(col => {
+              if (!savedColumnKeys.includes(col.key)) {
+                reorderedColumns.push(col)
+              }
+            })
+            
+            return reorderedColumns
+          }
+        }
+      } catch (error) {
+        // If parsing fails, fall back to default
+      }
+    }
+    return DEFAULT_COLUMNS
+  })
   const [showColumnSettings, setShowColumnSettings] = useState(false)
   
   // Drag state
@@ -93,7 +158,23 @@ export default function MembersPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   
   // Sorting
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' })
+  const [sortConfig, setSortConfig] = useState<SortConfig>(() => {
+    // Load saved sort configuration from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const savedSort = localStorage.getItem('memberTableSort')
+        if (savedSort) {
+          const parsed = JSON.parse(savedSort)
+          if (parsed.key && parsed.direction) {
+            return parsed
+          }
+        }
+      } catch (error) {
+        // If parsing fails, fall back to default
+      }
+    }
+    return { key: 'name', direction: 'asc' }
+  })
 
   useEffect(() => {
     if (searchParams.get('imported') === 'true') {
@@ -194,6 +275,11 @@ export default function MembersPage() {
         return false
       }
 
+      // Active/inactive filter
+      if (showActiveOnly && !member.is_active) {
+        return false
+      }
+
       // Leave filter
       if (showOnLeaveOnly && !member.is_on_leave) {
         return false
@@ -233,27 +319,38 @@ export default function MembersPage() {
     })
 
     return filtered
-  }, [members, searchTerm, selectedVoiceGroup, selectedMembershipType, selectedStatus, showOnLeaveOnly, sortConfig, calculateAge])
+  }, [members, searchTerm, selectedVoiceGroup, selectedMembershipType, selectedStatus, showActiveOnly, showOnLeaveOnly, sortConfig, calculateAge])
 
   const handleSort = (key: keyof Member | 'age') => {
-    setSortConfig(current => ({
-      key,
-      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-    }))
+    setSortConfig(current => {
+      const newSort = {
+        key,
+        direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+      } as SortConfig
+      
+      // Save to localStorage immediately
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('memberTableSort', JSON.stringify(newSort))
+      }
+      
+      return newSort
+    })
   }
 
   const toggleColumnVisibility = (columnKey: keyof Member | 'age') => {
-    setColumns(current => 
-      current.map(col => 
+    setColumns(current => {
+      const updated = current.map(col => 
         col.key === columnKey ? { ...col, visible: !col.visible } : col
       )
-    )
+      // Save to localStorage immediately
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('memberTableColumns', JSON.stringify(updated))
+      }
+      return updated
+    })
   }
 
-  // Save column order to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('memberTableColumns', JSON.stringify(columns))
-  }, [columns])
+  // Column preferences are now saved immediately when changed
 
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent<HTMLTableCellElement>, columnKey: string) => {
@@ -298,6 +395,10 @@ export default function MembersPage() {
       if (draggedCol) {
         newColumns.splice(targetIndex, 0, draggedCol)
         setColumns(newColumns)
+        // Save to localStorage immediately after reordering
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('memberTableColumns', JSON.stringify(newColumns))
+        }
       }
     }
 
@@ -312,6 +413,12 @@ export default function MembersPage() {
 
   const resetColumnOrder = () => {
     setColumns(DEFAULT_COLUMNS)
+    setSortConfig({ key: 'name', direction: 'asc' })
+    // Clear localStorage when resetting
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('memberTableColumns')
+      localStorage.removeItem('memberTableSort')
+    }
   }
 
   const visibleColumns = columns.filter(col => col.visible)
@@ -325,6 +432,12 @@ export default function MembersPage() {
         visibleColumns.map(col => {
           if (col.key === 'age') {
             return calculateAge(member.birth_date)
+          }
+          if (col.key === 'created_at') {
+            return `"${new Date(member.created_at).toLocaleDateString('nb-NO')}"`
+          }
+          if (col.key === 'first_membership_date') {
+            return member.first_membership_date ? `"${new Date(member.first_membership_date).toLocaleDateString('nb-NO')}"` : ''
           }
           const value = member[col.key as keyof Member]
           return value ? `"${value}"` : ''
@@ -428,6 +541,11 @@ export default function MembersPage() {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground">
+                Kolonneinnstillinger lagres automatisk og huskes neste gang du besøker siden.
+              </p>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {columns.map(column => (
                 <div key={column.key} className="flex items-center space-x-2">
@@ -460,7 +578,7 @@ export default function MembersPage() {
         </CardHeader>
         <CardContent>
           {/* Search and Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -507,7 +625,18 @@ export default function MembersPage() {
               <SelectContent>
                 <SelectItem value="all">Alle statuser</SelectItem>
                 <SelectItem value="Aktiv">Aktiv</SelectItem>
-                <SelectItem value="På permisjon">På permisjon</SelectItem>
+                <SelectItem value="I permisjon">I permisjon</SelectItem>
+                <SelectItem value="Sluttet">Sluttet</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={showActiveOnly ? "active" : "all"} onValueChange={(value) => setShowActiveOnly(value === "active")}>
+              <SelectTrigger>
+                <SelectValue placeholder="Medlemskap" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Kun aktive</SelectItem>
+                <SelectItem value="all">Alle medlemmer</SelectItem>
               </SelectContent>
             </Select>
 
@@ -566,17 +695,27 @@ export default function MembersPage() {
                   </TableRow>
                 ) : (
                   filteredAndSortedMembers.map(member => (
-                    <TableRow key={member.id}>
+                    <TableRow 
+                      key={member.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/dashboard/members/${member.id}`)}
+                    >
                       {visibleColumns.map(column => (
                         <TableCell key={column.key}>
                           {column.key === 'age' ? (
                             calculateAge(member.birth_date)
                           ) : column.key === 'membership_status' ? (
-                            <Badge variant={member.is_on_leave ? 'secondary' : 'default'}>
+                            <Badge variant={
+                              member.membership_status === 'Sluttet' ? 'destructive' :
+                              member.membership_status === 'I permisjon' ? 'secondary' : 
+                              'default'
+                            }>
                               {member.membership_status}
                             </Badge>
                           ) : column.key === 'created_at' ? (
                             new Date(member.created_at).toLocaleDateString('nb-NO')
+                          ) : column.key === 'first_membership_date' ? (
+                            member.first_membership_date ? new Date(member.first_membership_date).toLocaleDateString('nb-NO') : '-'
                           ) : (
                             member[column.key as keyof Member] || '-'
                           )}
