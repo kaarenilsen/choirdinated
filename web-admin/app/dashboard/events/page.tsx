@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Calendar, List } from 'lucide-react'
+import { Plus, Calendar, List, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import CalendarView from '@/components/events/CalendarView'
+import { AnimatedInteractiveTimeline } from '@/components/events/AnimatedInteractiveTimeline'
+import { format, getWeek } from 'date-fns'
 
 interface Event {
   id: string
@@ -33,7 +35,7 @@ interface Event {
 
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list')
+  const [viewMode, setViewMode] = useState<'timeline' | 'calendar' | 'list'>('timeline')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -101,6 +103,41 @@ export default function EventsPage() {
     return 'bg-green-500'
   }
 
+  const transformEventsToTimelineFormat = () => {
+    // Group events by week
+    const eventsByWeek: { [key: number]: any[] } = {}
+    
+    events.forEach(event => {
+      const eventDate = new Date(event.startTime)
+      const weekNumber = getWeek(eventDate, { weekStartsOn: 1 })
+      
+      if (!eventsByWeek[weekNumber]) {
+        eventsByWeek[weekNumber] = []
+      }
+      
+      eventsByWeek[weekNumber].push({
+        id: event.id,
+        title: event.title,
+        date: eventDate,
+        startTime: format(new Date(event.startTime), 'HH:mm'),
+        endTime: format(new Date(event.endTime), 'HH:mm'),
+        attendingCount: event.attendanceSummary.attending,
+        notAttendingCount: event.attendanceSummary.notAttending,
+        totalExpected: event.attendanceSummary.total,
+        location: event.location + (event.room ? `, ${event.room}` : ''),
+        type: event.eventType
+      })
+    })
+    
+    // Convert to timeline format
+    return Object.keys(eventsByWeek)
+      .sort((a, b) => parseInt(a) - parseInt(b))
+      .map(weekNumber => ({
+        weekNumber: parseInt(weekNumber),
+        events: eventsByWeek[parseInt(weekNumber)]!.sort((a, b) => a.date.getTime() - b.date.getTime())
+      }))
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -117,6 +154,14 @@ export default function EventsPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Øvelser & Konserter</h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant={viewMode === 'timeline' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('timeline')}
+          >
+            <Sparkles className="h-4 w-4" />
+            Tidslinje
+          </Button>
           <Button
             variant={viewMode === 'list' ? 'default' : 'outline'}
             size="sm"
@@ -147,6 +192,32 @@ export default function EventsPage() {
           </Button>
         </div>
       </div>
+
+      {viewMode === 'timeline' && (
+        <div>
+          {events.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Ingen hendelser ennå</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Opprett din første øvelse eller konsert for å se den animerte tidslinjen.
+                  </p>
+                  <Button asChild>
+                    <Link href="/dashboard/events/new">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Opprett hendelse
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <AnimatedInteractiveTimeline weeks={transformEventsToTimelineFormat()} />
+          )}
+        </div>
+      )}
 
       {viewMode === 'list' && (
         <div className="space-y-4">
